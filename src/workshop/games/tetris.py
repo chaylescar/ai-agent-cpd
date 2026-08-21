@@ -220,7 +220,7 @@ class GameScreen(BaseGameScreen):
     TITLE = "TETRIS"
     COLS = 48
     ROWS = 24
-    TICK_HZ = 9
+    TICK_HZ = 5
 
     def on_start(self) -> None:
         self.logic = TetrisLogic()
