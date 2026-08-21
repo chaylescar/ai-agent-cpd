@@ -355,24 +355,29 @@ class GameScreen(BaseGameScreen):
         right_well_x = 24
         well_y = 0
         rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
+        winner_banner = self._multiplayer_winner_banner()
 
         self._draw_box(left_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
         self._draw_box(right_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
         self._draw_logic_board(self.logic_p1, left_well_x, well_y)
         self._draw_logic_board(self.logic_p2, right_well_x, well_y)
 
-        self.grid.blit_text(
-            left_well_x + 1,
-            22,
-            f"P1 S:{self.logic_p1.score} L:{self.logic_p1.lines}",
-            "#d6ffd6",
-        )
-        self.grid.blit_text(
-            right_well_x + 1,
-            22,
-            f"P2 S:{self.logic_p2.score} L:{self.logic_p2.lines}",
-            "#d6ffd6",
-        )
+        if winner_banner is None:
+            self.grid.blit_text(
+                left_well_x + 1,
+                22,
+                f"P1 S:{self.logic_p1.score} L:{self.logic_p1.lines}",
+                "#d6ffd6",
+            )
+            self.grid.blit_text(
+                right_well_x + 1,
+                22,
+                f"P2 S:{self.logic_p2.score} L:{self.logic_p2.lines}",
+                "#d6ffd6",
+            )
+        else:
+            banner_x = (self.COLS - len(winner_banner)) // 2
+            self.grid.blit_text(banner_x, 22, winner_banner, "bold #ffd166")
 
         if self.logic_p1.game_over:
             self.grid.blit_text(left_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
@@ -385,6 +390,21 @@ class GameScreen(BaseGameScreen):
             "P1 A/D/W/S/F   P2 arrows/up/down/x/space   R restart",
             "#9fe99f",
         )
+
+    def _multiplayer_winner_banner(self) -> str | None:
+        p1_dead = self.logic_p1.game_over
+        p2_dead = self.logic_p2.game_over
+        if not p1_dead and not p2_dead:
+            return None
+        if p1_dead and not p2_dead:
+            return "P2 WINS"
+        if p2_dead and not p1_dead:
+            return "P1 WINS"
+        if self.logic_p1.score > self.logic_p2.score:
+            return "P1 WINS"
+        if self.logic_p2.score > self.logic_p1.score:
+            return "P2 WINS"
+        return "DRAW"
 
     def _draw_logic_board(self, logic: TetrisLogic, well_x: int, well_y: int) -> None:
         for y, row in enumerate(logic.board):
