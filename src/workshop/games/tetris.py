@@ -87,6 +87,13 @@ class Piece:
     rotation: int = 0
 
 
+@dataclass
+class CpuController:
+    target_x: int = 0
+    target_rotation: int = 0
+    piece_id: int | None = None
+
+
 Board = list[list[str | None]]
 
 
@@ -141,6 +148,95 @@ def clear_full_rows(board: Board) -> int:
     new_rows = [[None for _ in range(width)] for _ in range(cleared)]
     board[:] = new_rows + kept
     return cleared
+
+
+def _column_heights(board: Board) -> list[int]:
+    width = len(board[0]) if board else 0
+    height = len(board)
+    heights: list[int] = []
+    for x in range(width):
+        col_height = 0
+        for y in range(height):
+            if board[y][x] is not None:
+                col_height = height - y
+                break
+        heights.append(col_height)
+    return heights
+
+
+def _count_holes(board: Board) -> int:
+    width = len(board[0]) if board else 0
+    height = len(board)
+    holes = 0
+    for x in range(width):
+        seen_block = False
+        for y in range(height):
+            if board[y][x] is not None:
+                seen_block = True
+            elif seen_block:
+                holes += 1
+    return holes
+
+
+def _board_score(board: Board, lines_cleared: int) -> int:
+    heights = _column_heights(board)
+    holes = _count_holes(board)
+    bumpiness = sum(abs(heights[i] - heights[i + 1]) for i in range(len(heights) - 1))
+    aggregate_height = sum(heights)
+    return (lines_cleared * 1000) - (holes * 40) - (bumpiness * 6) - (aggregate_height * 3)
+
+
+def _choose_cpu_target(logic: TetrisLogic) -> tuple[int, int]:
+    if logic.current is None:
+        return (0, 0)
+
+    width = len(logic.board[0]) if logic.board else WELL_WIDTH
+    best_score: int | None = None
+    best_target = (logic.current.x, logic.current.rotation)
+
+    for rotation in range(4):
+        for x in range(-2, width + 2):
+            candidate = Piece(logic.current.kind, x, logic.current.y, rotation)
+            if not can_place(logic.board, candidate):
+                continue
+
+            dropped = Piece(candidate.kind, candidate.x, candidate.y, candidate.rotation)
+            while try_move(logic.board, dropped, 0, 1):
+                pass
+
+            simulated = [row[:] for row in logic.board]
+            lock_piece(simulated, dropped)
+            cleared = clear_full_rows(simulated)
+            score = _board_score(simulated, cleared)
+            if best_score is None or score > best_score:
+                best_score = score
+                best_target = (x, rotation)
+
+    return best_target
+
+
+def apply_cpu_step(logic: TetrisLogic, cpu: CpuController) -> None:
+    if logic.game_over or logic.current is None:
+        return
+
+    current_id = id(logic.current)
+    if cpu.piece_id != current_id:
+        cpu.piece_id = current_id
+        cpu.target_x, cpu.target_rotation = _choose_cpu_target(logic)
+
+    if logic.current.rotation != cpu.target_rotation:
+        logic.rotate()
+        return
+
+    if logic.current.x < cpu.target_x:
+        logic.move_right()
+        return
+
+    if logic.current.x > cpu.target_x:
+        logic.move_left()
+        return
+
+    logic.soft_drop()
 
 
 class TetrisLogic:
@@ -225,16 +321,21 @@ class GameScreen(BaseGameScreen):
     TICK_HZ = 5
 
     def on_start(self) -> None:
-        self.mode: Literal["select", "single", "multi"] = "select"
+        self.mode: Literal["select", "single", "multi", "vs_cpu"] = "select"
         self.logic = TetrisLogic()
         self.logic_p1 = TetrisLogic()
         self.logic_p2 = TetrisLogic()
+        self.cpu_p2 = CpuController()
         self._draw_game()
 
     def on_tick(self) -> None:
         if self.mode == "single":
             self.logic.tick()
         elif self.mode == "multi":
+            self.logic_p1.tick()
+            self.logic_p2.tick()
+        elif self.mode == "vs_cpu":
+            apply_cpu_step(self.logic_p2, self.cpu_p2)
             self.logic_p1.tick()
             self.logic_p2.tick()
         self._draw_game()
@@ -248,6 +349,11 @@ class GameScreen(BaseGameScreen):
                 self.mode = "multi"
                 self.logic_p1.restart()
                 self.logic_p2.restart()
+            elif key == "3":
+                self.mode = "vs_cpu"
+                self.logic_p1.restart()
+                self.logic_p2.restart()
+                self.cpu_p2 = CpuController()
             self._draw_game()
             return
 
@@ -257,6 +363,10 @@ class GameScreen(BaseGameScreen):
             elif self.mode == "multi":
                 self.logic_p1.restart()
                 self.logic_p2.restart()
+            elif self.mode == "vs_cpu":
+                self.logic_p1.restart()
+                self.logic_p2.restart()
+                self.cpu_p2 = CpuController()
             self._draw_game()
             return
 
@@ -295,6 +405,20 @@ class GameScreen(BaseGameScreen):
                 self.logic_p2.soft_drop()
             elif key == "space" and not self.logic_p2.game_over:
                 self.logic_p2.hard_drop()
+        elif self.mode == "vs_cpu":
+            if self.logic_p1.game_over:
+                self._draw_game()
+                return
+            if key in {"a", "left"}:
+                self.logic_p1.move_left()
+            elif key in {"d", "right"}:
+                self.logic_p1.move_right()
+            elif key in {"w", "up", "x"}:
+                self.logic_p1.rotate()
+            elif key in {"s", "down"}:
+                self.logic_p1.soft_drop()
+            elif key in {"f", "space"}:
+                self.logic_p1.hard_drop()
 
         self._draw_game()
 
@@ -305,7 +429,10 @@ class GameScreen(BaseGameScreen):
         if self.mode == "single":
             self._draw_single_player()
             return
-        self._draw_multiplayer()
+        if self.mode == "multi":
+            self._draw_multiplayer()
+            return
+        self._draw_vs_cpu()
 
     def _draw_mode_select(self) -> None:
         self.grid.clear(" ", "#031403")
@@ -314,7 +441,8 @@ class GameScreen(BaseGameScreen):
         self.grid.blit_text(12, 7, "Select mode", "bold #d6ffd6")
         self.grid.blit_text(12, 10, "1  Single Player", "#b8fcb8")
         self.grid.blit_text(12, 12, "2  Local Multiplayer", "#b8fcb8")
-        self.grid.blit_text(12, 15, "Q / Esc back to menu", "#9fe99f")
+        self.grid.blit_text(12, 14, "3  VS CPU", "#b8fcb8")
+        self.grid.blit_text(12, 17, "Q / Esc back to menu", "#9fe99f")
 
     def _draw_single_player(self) -> None:
         self.grid.clear(" ", "#031403")
@@ -355,7 +483,7 @@ class GameScreen(BaseGameScreen):
         right_well_x = 24
         well_y = 0
         rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
-        winner_banner = self._multiplayer_winner_banner()
+        winner_banner = self._multiplayer_winner_banner(self.logic_p1, self.logic_p2, "P1", "P2")
 
         self._draw_box(left_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
         self._draw_box(right_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
@@ -391,19 +519,67 @@ class GameScreen(BaseGameScreen):
             "#9fe99f",
         )
 
-    def _multiplayer_winner_banner(self) -> str | None:
-        p1_dead = self.logic_p1.game_over
-        p2_dead = self.logic_p2.game_over
+    def _draw_vs_cpu(self) -> None:
+        self.grid.clear(" ", "#031403")
+        left_well_x = 1
+        right_well_x = 24
+        well_y = 0
+        rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
+
+        self._draw_box(left_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
+        self._draw_box(right_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
+        self._draw_logic_board(self.logic_p1, left_well_x, well_y)
+        self._draw_logic_board(self.logic_p2, right_well_x, well_y)
+
+        self.grid.blit_text(
+            left_well_x + 1,
+            22,
+            f"YOU S:{self.logic_p1.score} L:{self.logic_p1.lines}",
+            "#d6ffd6",
+        )
+        self.grid.blit_text(
+            right_well_x + 1,
+            22,
+            f"CPU S:{self.logic_p2.score} L:{self.logic_p2.lines}",
+            "#d6ffd6",
+        )
+
+        if self.logic_p1.game_over:
+            self.grid.blit_text(left_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
+        if self.logic_p2.game_over:
+            self.grid.blit_text(right_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
+
+        winner_banner = self._multiplayer_winner_banner(self.logic_p1, self.logic_p2, "YOU", "CPU")
+        if winner_banner is not None:
+            banner_x = (self.COLS - len(winner_banner)) // 2
+            self.grid.blit_text(banner_x, 21, winner_banner, "bold #ffd166")
+
+        self.grid.blit_text(
+            1,
+            23,
+            "YOU A/D/W/S/F or arrows   CPU auto   R restart",
+            "#9fe99f",
+        )
+
+    def _multiplayer_winner_banner(
+        self,
+        left_logic: TetrisLogic,
+        right_logic: TetrisLogic,
+        left_name: str,
+        right_name: str,
+    ) -> str | None:
+        p1_dead = left_logic.game_over
+        p2_dead = right_logic.game_over
         if not p1_dead and not p2_dead:
             return None
         if p1_dead and not p2_dead:
-            return "P2 WINS"
+            return f"{right_name} WINS"
         if p2_dead and not p1_dead:
-            return "P1 WINS"
-        if self.logic_p1.score > self.logic_p2.score:
-            return "P1 WINS"
-        if self.logic_p2.score > self.logic_p1.score:
-            return "P2 WINS"
+            return f"{left_name} WINS"
+        if left_logic.score > right_logic.score:
+            return f"{left_name} WINS"
+        if right_logic.score > left_logic.score:
+            return f"{right_name} WINS"
         return "DRAW"
 
     def _draw_logic_board(self, logic: TetrisLogic, well_x: int, well_y: int) -> None:
