@@ -10,7 +10,8 @@ from workshop.game import GameScreen as BaseGameScreen
 WELL_WIDTH = 10
 WELL_HEIGHT = 20
 
-BLOCK_GLYPH = "█"
+BLOCK_GLYPH = "██"
+CELL_WIDTH = 2
 
 LINE_SCORES = {
     0: 0,
@@ -258,14 +259,15 @@ class GameScreen(BaseGameScreen):
 
         well_x = 3
         well_y = 2
-        self._draw_box(well_x, well_y, WELL_WIDTH + 2, WELL_HEIGHT + 2, "bold #33ff33")
+        rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
+        self._draw_box(well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
 
         for y, row in enumerate(self.logic.board):
             for x, cell in enumerate(row):
                 if cell is None:
                     continue
-                self.grid.set_cell(
-                    well_x + 1 + x,
+                self.grid.blit_text(
+                    well_x + 1 + (x * CELL_WIDTH),
                     well_y + 1 + y,
                     BLOCK_GLYPH,
                     f"bold {PIECE_COLORS[cell]}",
@@ -273,14 +275,14 @@ class GameScreen(BaseGameScreen):
 
         if self.logic.current is not None:
             for x, y in piece_cells(self.logic.current):
-                self.grid.set_cell(
-                    well_x + 1 + x,
+                self.grid.blit_text(
+                    well_x + 1 + (x * CELL_WIDTH),
                     well_y + 1 + y,
                     BLOCK_GLYPH,
                     f"bold {PIECE_COLORS[self.logic.current.kind]}",
                 )
 
-        status_x = well_x + WELL_WIDTH + 5
+        status_x = well_x + rendered_well_width + 3
         self.grid.blit_text(status_x, 3, "TETRIS", "bold #7cff7c")
         self.grid.blit_text(status_x, 5, f"Score: {self.logic.score}", "#d6ffd6")
         self.grid.blit_text(status_x, 6, f"Lines: {self.logic.lines}", "#d6ffd6")
@@ -294,10 +296,11 @@ class GameScreen(BaseGameScreen):
         if self.logic.game_over:
             self.grid.blit_text(status_x, 15, "GAME OVER", "bold #ff8080")
             self.grid.blit_text(status_x, 16, "Press R", "#ffc0c0")
+            message = " GAME OVER "
             self.grid.blit_text(
-                well_x + 2,
+                well_x + ((rendered_well_width - len(message)) // 2),
                 well_y + WELL_HEIGHT // 2,
-                " GAME OVER ",
+                message,
                 "bold #ff8080",
             )
 
