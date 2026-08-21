@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from random import Random
+from typing import Literal
 
 from workshop.game import GameScreen as BaseGameScreen
 
@@ -224,36 +225,98 @@ class GameScreen(BaseGameScreen):
     TICK_HZ = 5
 
     def on_start(self) -> None:
+        self.mode: Literal["select", "single", "multi"] = "select"
         self.logic = TetrisLogic()
+        self.logic_p1 = TetrisLogic()
+        self.logic_p2 = TetrisLogic()
         self._draw_game()
 
     def on_tick(self) -> None:
-        self.logic.tick()
+        if self.mode == "single":
+            self.logic.tick()
+        elif self.mode == "multi":
+            self.logic_p1.tick()
+            self.logic_p2.tick()
         self._draw_game()
 
     def on_game_key(self, key: str) -> None:
-        if key == "r":
-            self.logic.restart()
-            self._draw_game()
-            return
-        if self.logic.game_over:
+        if self.mode == "select":
+            if key == "1":
+                self.mode = "single"
+                self.logic.restart()
+            elif key == "2":
+                self.mode = "multi"
+                self.logic_p1.restart()
+                self.logic_p2.restart()
             self._draw_game()
             return
 
-        if key == "left":
-            self.logic.move_left()
-        elif key == "right":
-            self.logic.move_right()
-        elif key in {"up", "x"}:
-            self.logic.rotate()
-        elif key == "down":
-            self.logic.soft_drop()
-        elif key == "space":
-            self.logic.hard_drop()
+        if key == "r":
+            if self.mode == "single":
+                self.logic.restart()
+            elif self.mode == "multi":
+                self.logic_p1.restart()
+                self.logic_p2.restart()
+            self._draw_game()
+            return
+
+        if self.mode == "single":
+            if self.logic.game_over:
+                self._draw_game()
+                return
+            if key == "left":
+                self.logic.move_left()
+            elif key == "right":
+                self.logic.move_right()
+            elif key in {"up", "x"}:
+                self.logic.rotate()
+            elif key == "down":
+                self.logic.soft_drop()
+            elif key == "space":
+                self.logic.hard_drop()
+        elif self.mode == "multi":
+            if key == "a" and not self.logic_p1.game_over:
+                self.logic_p1.move_left()
+            elif key == "d" and not self.logic_p1.game_over:
+                self.logic_p1.move_right()
+            elif key == "w" and not self.logic_p1.game_over:
+                self.logic_p1.rotate()
+            elif key == "s" and not self.logic_p1.game_over:
+                self.logic_p1.soft_drop()
+            elif key == "f" and not self.logic_p1.game_over:
+                self.logic_p1.hard_drop()
+            elif key == "left" and not self.logic_p2.game_over:
+                self.logic_p2.move_left()
+            elif key == "right" and not self.logic_p2.game_over:
+                self.logic_p2.move_right()
+            elif key in {"up", "x"} and not self.logic_p2.game_over:
+                self.logic_p2.rotate()
+            elif key == "down" and not self.logic_p2.game_over:
+                self.logic_p2.soft_drop()
+            elif key == "space" and not self.logic_p2.game_over:
+                self.logic_p2.hard_drop()
 
         self._draw_game()
 
     def _draw_game(self) -> None:
+        if self.mode == "select":
+            self._draw_mode_select()
+            return
+        if self.mode == "single":
+            self._draw_single_player()
+            return
+        self._draw_multiplayer()
+
+    def _draw_mode_select(self) -> None:
+        self.grid.clear(" ", "#031403")
+        self.grid.draw_border(style="bold #33ff33")
+        self.grid.blit_text(19, 4, "TETRIS", "bold #7cff7c")
+        self.grid.blit_text(12, 7, "Select mode", "bold #d6ffd6")
+        self.grid.blit_text(12, 10, "1  Single Player", "#b8fcb8")
+        self.grid.blit_text(12, 12, "2  Local Multiplayer", "#b8fcb8")
+        self.grid.blit_text(12, 15, "Q / Esc back to menu", "#9fe99f")
+
+    def _draw_single_player(self) -> None:
         self.grid.clear(" ", "#031403")
         self.grid.draw_border(style="bold #33ff33")
 
@@ -262,25 +325,7 @@ class GameScreen(BaseGameScreen):
         rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
         self._draw_box(well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
 
-        for y, row in enumerate(self.logic.board):
-            for x, cell in enumerate(row):
-                if cell is None:
-                    continue
-                self.grid.blit_text(
-                    well_x + 1 + (x * CELL_WIDTH),
-                    well_y + 1 + y,
-                    BLOCK_GLYPH,
-                    f"bold {PIECE_COLORS[cell]}",
-                )
-
-        if self.logic.current is not None:
-            for x, y in piece_cells(self.logic.current):
-                self.grid.blit_text(
-                    well_x + 1 + (x * CELL_WIDTH),
-                    well_y + 1 + y,
-                    BLOCK_GLYPH,
-                    f"bold {PIECE_COLORS[self.logic.current.kind]}",
-                )
+        self._draw_logic_board(self.logic, well_x, well_y)
 
         status_x = well_x + rendered_well_width + 3
         self.grid.blit_text(status_x, 3, "TETRIS", "bold #7cff7c")
@@ -303,6 +348,64 @@ class GameScreen(BaseGameScreen):
                 message,
                 "bold #ff8080",
             )
+
+    def _draw_multiplayer(self) -> None:
+        self.grid.clear(" ", "#031403")
+        left_well_x = 1
+        right_well_x = 24
+        well_y = 0
+        rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
+
+        self._draw_box(left_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
+        self._draw_box(right_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
+        self._draw_logic_board(self.logic_p1, left_well_x, well_y)
+        self._draw_logic_board(self.logic_p2, right_well_x, well_y)
+
+        self.grid.blit_text(
+            left_well_x + 1,
+            22,
+            f"P1 S:{self.logic_p1.score} L:{self.logic_p1.lines}",
+            "#d6ffd6",
+        )
+        self.grid.blit_text(
+            right_well_x + 1,
+            22,
+            f"P2 S:{self.logic_p2.score} L:{self.logic_p2.lines}",
+            "#d6ffd6",
+        )
+
+        if self.logic_p1.game_over:
+            self.grid.blit_text(left_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
+        if self.logic_p2.game_over:
+            self.grid.blit_text(right_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
+
+        self.grid.blit_text(
+            1,
+            23,
+            "P1 A/D/W/S/F   P2 arrows/up/down/x/space   R restart",
+            "#9fe99f",
+        )
+
+    def _draw_logic_board(self, logic: TetrisLogic, well_x: int, well_y: int) -> None:
+        for y, row in enumerate(logic.board):
+            for x, cell in enumerate(row):
+                if cell is None:
+                    continue
+                self.grid.blit_text(
+                    well_x + 1 + (x * CELL_WIDTH),
+                    well_y + 1 + y,
+                    BLOCK_GLYPH,
+                    f"bold {PIECE_COLORS[cell]}",
+                )
+
+        if logic.current is not None:
+            for x, y in piece_cells(logic.current):
+                self.grid.blit_text(
+                    well_x + 1 + (x * CELL_WIDTH),
+                    well_y + 1 + y,
+                    BLOCK_GLYPH,
+                    f"bold {PIECE_COLORS[logic.current.kind]}",
+                )
 
     def _draw_box(self, x: int, y: int, width: int, height: int, style: str) -> None:
         x1 = x + width - 1
