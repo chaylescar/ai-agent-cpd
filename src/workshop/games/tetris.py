@@ -224,19 +224,19 @@ class GameScreen(BaseGameScreen):
 
     def on_start(self) -> None:
         self.logic = TetrisLogic()
-        self._render()
+        self._draw_game()
 
     def on_tick(self) -> None:
         self.logic.tick()
-        self._render()
+        self._draw_game()
 
     def on_game_key(self, key: str) -> None:
         if key == "r":
             self.logic.restart()
-            self._render()
+            self._draw_game()
             return
         if self.logic.game_over:
-            self._render()
+            self._draw_game()
             return
 
         if key == "left":
@@ -250,9 +250,9 @@ class GameScreen(BaseGameScreen):
         elif key == "space":
             self.logic.hard_drop()
 
-        self._render()
+        self._draw_game()
 
-    def _render(self) -> None:
+    def _draw_game(self) -> None:
         self.grid.clear(" ", "#031403")
         self.grid.draw_border(style="bold #33ff33")
 
