@@ -321,10 +321,11 @@ class GameScreen(BaseGameScreen):
     TICK_HZ = 5
 
     def on_start(self) -> None:
-        self.mode: Literal["select", "single", "multi", "vs_cpu"] = "select"
+        self.mode: Literal["select", "single", "multi", "vs_cpu", "cpu_duel"] = "select"
         self.logic = TetrisLogic()
         self.logic_p1 = TetrisLogic()
         self.logic_p2 = TetrisLogic()
+        self.cpu_p1 = CpuController()
         self.cpu_p2 = CpuController()
         self._draw_game()
 
@@ -335,6 +336,11 @@ class GameScreen(BaseGameScreen):
             self.logic_p1.tick()
             self.logic_p2.tick()
         elif self.mode == "vs_cpu":
+            apply_cpu_step(self.logic_p2, self.cpu_p2)
+            self.logic_p1.tick()
+            self.logic_p2.tick()
+        elif self.mode == "cpu_duel":
+            apply_cpu_step(self.logic_p1, self.cpu_p1)
             apply_cpu_step(self.logic_p2, self.cpu_p2)
             self.logic_p1.tick()
             self.logic_p2.tick()
@@ -353,6 +359,13 @@ class GameScreen(BaseGameScreen):
                 self.mode = "vs_cpu"
                 self.logic_p1.restart()
                 self.logic_p2.restart()
+                self.cpu_p1 = CpuController()
+                self.cpu_p2 = CpuController()
+            elif key == "4":
+                self.mode = "cpu_duel"
+                self.logic_p1.restart()
+                self.logic_p2.restart()
+                self.cpu_p1 = CpuController()
                 self.cpu_p2 = CpuController()
             self._draw_game()
             return
@@ -366,6 +379,12 @@ class GameScreen(BaseGameScreen):
             elif self.mode == "vs_cpu":
                 self.logic_p1.restart()
                 self.logic_p2.restart()
+                self.cpu_p1 = CpuController()
+                self.cpu_p2 = CpuController()
+            elif self.mode == "cpu_duel":
+                self.logic_p1.restart()
+                self.logic_p2.restart()
+                self.cpu_p1 = CpuController()
                 self.cpu_p2 = CpuController()
             self._draw_game()
             return
@@ -432,7 +451,10 @@ class GameScreen(BaseGameScreen):
         if self.mode == "multi":
             self._draw_multiplayer()
             return
-        self._draw_vs_cpu()
+        if self.mode == "vs_cpu":
+            self._draw_vs_cpu()
+            return
+        self._draw_cpu_duel()
 
     def _draw_mode_select(self) -> None:
         self.grid.clear(" ", "#031403")
@@ -442,7 +464,8 @@ class GameScreen(BaseGameScreen):
         self.grid.blit_text(12, 10, "1  Single Player", "#b8fcb8")
         self.grid.blit_text(12, 12, "2  Local Multiplayer", "#b8fcb8")
         self.grid.blit_text(12, 14, "3  VS CPU", "#b8fcb8")
-        self.grid.blit_text(12, 17, "Q / Esc back to menu", "#9fe99f")
+        self.grid.blit_text(12, 16, "4  CPU VS CPU", "#b8fcb8")
+        self.grid.blit_text(12, 19, "Q / Esc back to menu", "#9fe99f")
 
     def _draw_single_player(self) -> None:
         self.grid.clear(" ", "#031403")
@@ -558,6 +581,53 @@ class GameScreen(BaseGameScreen):
             1,
             23,
             "YOU A/D/W/S/F or arrows   CPU auto   R restart",
+            "#9fe99f",
+        )
+
+    def _draw_cpu_duel(self) -> None:
+        self.grid.clear(" ", "#031403")
+        left_well_x = 1
+        right_well_x = 24
+        well_y = 0
+        rendered_well_width = (WELL_WIDTH * CELL_WIDTH) + 2
+
+        self._draw_box(left_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
+        self._draw_box(right_well_x, well_y, rendered_well_width, WELL_HEIGHT + 2, "bold #33ff33")
+        self._draw_logic_board(self.logic_p1, left_well_x, well_y)
+        self._draw_logic_board(self.logic_p2, right_well_x, well_y)
+
+        self.grid.blit_text(
+            left_well_x + 1,
+            22,
+            f"CPU-1 S:{self.logic_p1.score} L:{self.logic_p1.lines}",
+            "#d6ffd6",
+        )
+        self.grid.blit_text(
+            right_well_x + 1,
+            22,
+            f"CPU-2 S:{self.logic_p2.score} L:{self.logic_p2.lines}",
+            "#d6ffd6",
+        )
+
+        if self.logic_p1.game_over:
+            self.grid.blit_text(left_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
+        if self.logic_p2.game_over:
+            self.grid.blit_text(right_well_x + 5, 11, " GAME OVER ", "bold #ff8080")
+
+        winner_banner = self._multiplayer_winner_banner(
+            self.logic_p1,
+            self.logic_p2,
+            "CPU-1",
+            "CPU-2",
+        )
+        if winner_banner is not None:
+            banner_x = (self.COLS - len(winner_banner)) // 2
+            self.grid.blit_text(banner_x, 21, winner_banner, "bold #ffd166")
+
+        self.grid.blit_text(
+            1,
+            23,
+            "CPU duel running   R restart   Q/Esc menu",
             "#9fe99f",
         )
 
