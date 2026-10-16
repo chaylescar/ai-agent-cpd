@@ -48,8 +48,9 @@ def test_as_rich_text_contains_drawn_glyphs() -> None:
 
 def test_catalogue_unbuilt() -> None:
     assert [spec.slug for spec in GAMES] == ["snake", "pong", "tetris"]
-    for spec in GAMES:
-        assert load_game_screen(spec.slug) is None
+    assert load_game_screen("snake") is not None
+    assert load_game_screen("pong") is None
+    assert load_game_screen("tetris") is None
 
 
 def test_arcade_menu_headless() -> None:
