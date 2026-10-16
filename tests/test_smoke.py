@@ -46,10 +46,11 @@ def test_as_rich_text_contains_drawn_glyphs() -> None:
     assert "Go" in grid.as_rich_text().plain
 
 
-def test_catalogue_unbuilt() -> None:
+def test_catalogue_loads() -> None:
     assert [spec.slug for spec in GAMES] == ["snake", "pong", "tetris"]
-    for spec in GAMES:
-        assert load_game_screen(spec.slug) is None
+    assert load_game_screen("snake") is not None
+    assert load_game_screen("pong") is not None
+    assert load_game_screen("tetris") is not None
 
 
 def test_arcade_menu_headless() -> None:
@@ -61,12 +62,35 @@ def test_arcade_menu_headless() -> None:
             assert "SNAKE" in menu
             assert "PONG" in menu
             assert "TETRIS" in menu
-            assert "NOT BUILT" in menu
+            assert menu.count("READY") == 3
+            assert "NOT BUILT" not in menu
             await pilot.press("down")
             await pilot.pause()
             assert app.cursor == 1
             await pilot.press("enter")
             await pilot.pause()
+
+
+def test_pong_and_tetris_load_from_menu_headless() -> None:
+    async def scenario() -> None:
+        app = ArcadeApp()
+        async with app.run_test(size=(120, 40), notifications=True) as pilot:
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen.__class__.__module__ == "workshop.games.pong"
+            await pilot.press("q")
+            await pilot.pause()
+
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen.__class__.__module__ == "workshop.games.tetris"
+
+    asyncio.run(scenario())
 
     asyncio.run(scenario())
 
@@ -94,5 +118,18 @@ def test_game_screen_headless() -> None:
             await pilot.press("q")
             await pilot.pause()
             assert "SNAKE" in str(app.query_one("#menu").content)
+
+    asyncio.run(scenario())
+
+
+def test_snake_loads_from_menu_headless() -> None:
+    async def scenario() -> None:
+        app = ArcadeApp()
+        async with app.run_test(size=(120, 40), notifications=True) as pilot:
+            await pilot.pause()
+            # Default cursor is on SNAKE; Enter should push snake.GameScreen.
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen.__class__.__module__ == "workshop.games.snake"
 
     asyncio.run(scenario())
